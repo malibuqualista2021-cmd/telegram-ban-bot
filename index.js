@@ -33,7 +33,38 @@ bot.command('listele', (ctx) => {
   ctx.reply(`📋 Beyaz Liste:\n${Array.from(whitelist).map(u => `@${u}`).join('\n')}`);
 });
 
-// Chat member güncellemelerini dinle
+// Mesajları dinle - İsim değişikliğini yakalamak için
+bot.on('message', async (ctx) => {
+  const user = ctx.from;
+  const adminId = process.env.ADMIN_ID;
+
+  // Eğer gerçek admin değilse ismini kontrol et
+  if (user.id.toString() !== adminId) {
+    const fullName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase();
+
+    // "malibu" kelimesini kontrol et (harf arası boşlukları da yakalar)
+    if (fullName.includes('malibu') || fullName.replace(/\s/g, '').includes('malibu')) {
+      try {
+        console.log(`[TAKLİT TESPİTİ] ${user.first_name} ismini Malibu olarak değiştirdi! Banlanıyor...`);
+
+        await ctx.banChatMember(user.id);
+
+        if (adminId) {
+          await ctx.telegram.sendMessage(adminId, `🚨 <b>Taklit Girişimi Engellendi!</b>\n\n` +
+            `Bir kullanıcı ismini <b>Malibu</b> yaparak mesaj attı ve otomatik olarak banlandı.\n\n` +
+            `👤 <b>Ad:</b> ${user.first_name} ${user.last_name || ''}\n` +
+            `🆔 <b>ID:</b> <code>${user.id}</code>\n` +
+            `🔗 <b>Username:</b> @${user.username || 'yok'}`, { parse_mode: 'HTML' });
+        }
+      } catch (error) {
+        console.error('[HATA] Taklitçi banlanırken sorun oluştu:', error.message);
+      }
+      return; // Banlandığı için başka işlem yapmaya gerek yok
+    }
+  }
+});
+
+// Chat member güncellemelerini dinle (Katılma anı için)
 bot.on('chat_member', async (ctx) => {
   const { old_chat_member, new_chat_member } = ctx.update.chat_member;
   const user = new_chat_member.user;
@@ -72,6 +103,61 @@ bot.on('chat_member', async (ctx) => {
     }
   }
 });
+
+// --- GÜNLÜK MESAJ AYARLARI ---
+const DAILY_MESSAGE = `
+📢 <b>Malibu İndikatör & Eğitim Linkleri</b>
+
+💎 <b>Ücretli İndikatörler:</b> <a href="https://maliibuu.netlify.app/">maliibuu.netlify.app</a>
+📊 <b>Trade Journali:</b> <a href="https://masterclassjournall.netlify.app/">masterclassjournall.netlify.app</a>
+🎥 <b>YouTube Eğitimleri:</b> <a href="https://www.youtube.com/@malibuuuu">youtube.com/@malibuuuu</a>
+🐦 <b>X (Twitter):</b> <a href="https://x.com/maliibu">x.com/maliibu</a>
+📈 <b>Tüm İndikatörler:</b> <a href="https://tr.tradingview.com/u/malibuuu/#published-scripts">TradingView</a>
+💬 <b>Chat Kanalı:</b> <a href="https://t.me/+V8IdRen7SaBiNWFk">Katılmak için tıkla</a>
+
+<i>Her gün saat 20:30'da otomatik bilgilendirme.</i>
+`;
+const TARGET_HOUR = 20; // Saat (20:30 için 20)
+const TARGET_MINUTE = 30; // Dakika
+
+function scheduleDailyMessage() {
+  const now = new Date();
+  // Türkiye saati (UTC+3) hesabı
+  const trTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+
+  let target = new Date(trTime);
+  target.setHours(TARGET_HOUR, TARGET_MINUTE, 0, 0);
+
+  // Eğer saat geçtiyse yarına kur
+  if (trTime > target) {
+    target.setDate(target.getDate() + 1);
+  }
+
+  const delay = target.getTime() - trTime.getTime();
+  console.log(`[BİLGİ] Bir sonraki mesaj ${target.toLocaleString('tr-TR')} zamanına kuruldu.`);
+
+  setTimeout(() => {
+    sendDailyMessage();
+    // İlk mesajdan sonra her 24 saatte bir tekrarla
+    setInterval(sendDailyMessage, 24 * 60 * 60 * 1000);
+  }, delay);
+}
+
+async function sendDailyMessage() {
+  const CHANNEL_ID = process.env.CHANNEL_ID || '-1002345678901'; // <-- Kanal ID'nizi buraya veya Railway variables'a yazın
+  if (CHANNEL_ID) {
+    try {
+      await bot.telegram.sendMessage(CHANNEL_ID, DAILY_MESSAGE, { parse_mode: 'HTML' });
+      console.log('[BİLGİ] Günlük mesaj kanala başarıyla gönderildi.');
+    } catch (error) {
+      console.error('[HATA] Günlük mesaj gönderilemedi:', error.message);
+    }
+  }
+}
+
+// Zamanlayıcıyı başlat
+scheduleDailyMessage();
+// ----------------------------
 
 // Botu başlatırken chat_member güncellemelerini almasını sağla
 bot.launch({
