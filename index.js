@@ -144,7 +144,7 @@ function scheduleDailyMessage() {
 }
 
 async function sendDailyMessage() {
-  const CHANNEL_ID = process.env.CHANNEL_ID || '-1002345678901'; // <-- Kanal ID'nizi buraya veya Railway variables'a yazın
+  const CHANNEL_ID = process.env.CHANNEL_ID || '-1002358799473';
   if (CHANNEL_ID) {
     try {
       await bot.telegram.sendMessage(CHANNEL_ID, DAILY_MESSAGE, { parse_mode: 'HTML' });
