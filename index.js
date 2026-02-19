@@ -8,6 +8,31 @@ if (!process.env.BOT_TOKEN) {
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
+// Beyaz liste (Whitelist) - Kullanıcı adlarını tutar
+// Not: Basitlik adına bellekte tutulur, bot yeniden başlarsa sıfırlanır.
+const whitelist = new Set();
+
+// /izinver komutu - Sadece admin kullanabilir
+bot.command('izinver', async (ctx) => {
+  if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
+
+  const username = ctx.message.text.split(' ')[1];
+  if (!username) {
+    return ctx.reply('Lütfen bir kullanıcı adı girin. Örn: /izinver malibu');
+  }
+
+  const cleanUsername = username.replace('@', '').toLowerCase();
+  whitelist.add(cleanUsername);
+  ctx.reply(`✅ @${cleanUsername} beyaz listeye eklendi. Bu kişi kanaldan ayrılsa bile banlanmayacak.`);
+});
+
+// /listele komutu - Beyaz listeyi görürsünüz
+bot.command('listele', (ctx) => {
+  if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
+  if (whitelist.size === 0) return ctx.reply('Beyaz liste boş.');
+  ctx.reply(`📋 Beyaz Liste:\n${Array.from(whitelist).map(u => `@${u}`).join('\n')}`);
+});
+
 // Chat member güncellemelerini dinle
 bot.on('chat_member', async (ctx) => {
   const { old_chat_member, new_chat_member } = ctx.update.chat_member;
@@ -16,6 +41,14 @@ bot.on('chat_member', async (ctx) => {
 
   // Kullanıcı durumunu kontrol et: Eğer durum 'left' (ayrıldı) ise banla
   if (new_chat_member.status === 'left') {
+    const username = (user.username || '').toLowerCase();
+
+    // Beyaz liste kontrolü
+    if (whitelist.has(username)) {
+      console.log(`[BEYAZ LISTE] ${user.first_name} (@${username}) listede olduğu için banlanmadı.`);
+      return;
+    }
+
     try {
       console.log(`[AYRILMA] Kullanıcı ayrıldı: ${user.first_name} (@${user.username || 'yok'}) - ID: ${user.id}`);
 
