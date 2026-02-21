@@ -114,8 +114,6 @@ const DAILY_MESSAGE = `
 🐦 <b>X (Twitter):</b> <a href="https://x.com/maliibu">x.com/maliibu</a>
 📈 <b>Tüm İndikatörler:</b> <a href="https://tr.tradingview.com/u/malibuuu/#published-scripts">TradingView</a>
 💬 <b>Chat Kanalı:</b> <a href="https://t.me/+V8IdRen7SaBiNWFk">Katılmak için tıkla</a>
-
-<i>Her gün saat 20:30'da otomatik bilgilendirme.</i>
 `;
 const TARGET_HOUR = 20; // Saat (20:30 için 20)
 const TARGET_MINUTE = 30; // Dakika
