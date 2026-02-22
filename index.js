@@ -81,7 +81,11 @@ bot.on('chat_member', async (ctx) => {
   const user = new_chat_member.user;
   const chat = ctx.chat;
 
-  if (new_chat_member.status === 'left') {
+  // Sadece AKTİF bir üye (admin, üye, kısıtlı) çıkarsa banla. 
+  // Banlı birinin banı kaldırılırsa (kicked -> left) işlem yapma.
+  const wasActive = ['member', 'administrator', 'restricted'].includes(old_chat_member.status);
+
+  if (new_chat_member.status === 'left' && wasActive) {
     const username = (user.username || '').toLowerCase();
 
     if (whitelist.has(username)) {
