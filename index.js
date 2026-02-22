@@ -14,6 +14,9 @@ const ALLOWED_CHATS = (process.env.CHANNEL_ID || '').split(',').map(id => id.tri
 // Beyaz liste (Whitelist)
 const whitelist = new Set();
 
+// Son gönderilen grup mesajını takip etmek için (Hafızada tutulur)
+let lastGroupMessageId = null;
+
 // Yardımcı fonksiyon: Chat ID yetkili mi?
 function isAuthorizedChat(chatId) {
   return ALLOWED_CHATS.includes(chatId.toString());
@@ -110,14 +113,37 @@ bot.on('chat_member', async (ctx) => {
       }
 
       // --- GRUP CHATİNE ÖZEL MESAJ ---
-      // Eğer bu chat bir kanal değilse (yani grup ise) ve ALLOWED_CHATS içinde 2. ID ise (veya genel mantıkla)
-      // Burada pratik olması için: Eğer ID kanal ID'si değilse (ALLOWED_CHATS[0] kanal demiştik)
+      // Eğer bu chat bir kanal değilse (yani grup ise) ve ALLOWED_CHATS içindeki 1. ID değilse
       if (chat.id.toString() !== ALLOWED_CHATS[0]) {
+
+        // KANAL SENKRONİZASYON KONTROLÜ
+        // Eğer kişi kanaldan da ayrılmışsa, gruba mesaj atma (zaten kanalda banlanmıştır)
+        try {
+          const channelMember = await ctx.telegram.getChatMember(ALLOWED_CHATS[0], user.id);
+          if (channelMember.status === 'left' || channelMember.status === 'kicked') {
+            console.log(`[BİLGİ] Kullanıcı kanaldan da ayrıldığı için gruba veda mesajı atılmadı.`);
+            return;
+          }
+        } catch (e) {
+          // Kanalda bulunamazsa veya hata olursa devam et
+        }
+
+        // ESKİ MESAJI SİL
+        if (lastGroupMessageId) {
+          try {
+            await ctx.telegram.deleteMessage(chat.id, lastGroupMessageId);
+            console.log(`[BİLGİ] Eski ban mesajı silindi.`);
+          } catch (e) {
+            // Mesaj çok eskiyse veya silinemezse hata verme
+          }
+        }
+
         const userDisplayName = user.username ? `@${user.username}` : user.first_name;
         const groupMessage = `[ ${userDisplayName} ] Çıktı. Biz de “ya geri gelirse” diye banladık. Kılıcımız keskin sevgimiz sonsuz 😂`;
 
-        await ctx.telegram.sendMessage(chat.id, groupMessage);
-        console.log(`[BİLGİ] Grup chatine ban mesajı gönderildi.`);
+        const sentMsg = await ctx.telegram.sendMessage(chat.id, groupMessage);
+        lastGroupMessageId = sentMsg.message_id; // Yeni ID'yi kaydet
+        console.log(`[BİLGİ] Grup chatine yeni ban mesajı gönderildi.`);
       }
       // ----------------------------
 
