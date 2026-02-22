@@ -93,6 +93,7 @@ bot.on('chat_member', async (ctx) => {
       console.log(`[AYRILMA] Kullanıcı ayrıldı: ${user.first_name} (@${user.username || 'yok'}) - ID: ${user.id} - Chat: ${chat.id}`);
       await ctx.banChatMember(user.id);
 
+      // Admin'e bildirim
       const adminId = process.env.ADMIN_ID;
       if (adminId) {
         const message = `🚫 <b>Kullanıcı Yasaklandı</b>\n\n` +
@@ -103,6 +104,19 @@ bot.on('chat_member', async (ctx) => {
 
         await ctx.telegram.sendMessage(adminId, message, { parse_mode: 'HTML' });
       }
+
+      // --- GRUP CHATİNE ÖZEL MESAJ ---
+      // Eğer bu chat bir kanal değilse (yani grup ise) ve ALLOWED_CHATS içinde 2. ID ise (veya genel mantıkla)
+      // Burada pratik olması için: Eğer ID kanal ID'si değilse (ALLOWED_CHATS[0] kanal demiştik)
+      if (chat.id.toString() !== ALLOWED_CHATS[0]) {
+        const userDisplayName = user.username ? `@${user.username}` : user.first_name;
+        const groupMessage = `[ ${userDisplayName} ] Çıktı. Biz de “ya geri gelirse” diye banladık. Kılıcımız keskin sevgimiz sonsuz 😂`;
+
+        await ctx.telegram.sendMessage(chat.id, groupMessage);
+        console.log(`[BİLGİ] Grup chatine ban mesajı gönderildi.`);
+      }
+      // ----------------------------
+
     } catch (error) {
       console.error(`[HATA] İşlem başarısız (${user.id}):`, error.description || error.message);
     }
@@ -122,7 +136,6 @@ const DAILY_MESSAGE = `
 `;
 
 async function sendDailyMessage() {
-  // İlk ID'yi (Ana Kanall) seçip mesaj gönderir
   const MAIN_CHANNEL = ALLOWED_CHATS[0];
   if (MAIN_CHANNEL) {
     try {
@@ -134,7 +147,6 @@ async function sendDailyMessage() {
   }
 }
 
-// Zamanlayıcı ayarları (20:30)
 function scheduleDailyMessage() {
   const TARGET_HOUR = 20;
   const TARGET_MINUTE = 30;
