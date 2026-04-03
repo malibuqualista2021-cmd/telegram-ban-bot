@@ -153,17 +153,54 @@ bot.on('chat_member', async (ctx) => {
   }
 });
 
-// --- GÜNLÜK MESAJ AYARLARI ---
+// --- OTOMATİK MESAJ AYARLARI ---
 const DAILY_MESSAGE = `
 📢 <b>Malibu İndikatör & Eğitim Linkleri</b>
 
-💎 <b>Ücretli İndikatörler:</b> <a href="https://maliibuu.netlify.app/">maliibuu.netlify.app</a>
+💎 <b>Ücretli İndikatörler:</b> <a href="https://malibuta.com/">malibuta.com</a>
 📊 <b>Trade Journali:</b> <a href="https://masterclassjournall.netlify.app/">masterclassjournall.netlify.app</a>
 🎥 <b>YouTube Eğitimleri:</b> <a href="https://www.youtube.com/@malibuuuu">youtube.com/@malibuuuu</a>
 🐦 <b>X (Twitter):</b> <a href="https://x.com/maliibu">x.com/maliibu</a>
 📈 <b>Tüm İndikatörler:</b> <a href="https://tr.tradingview.com/u/malibuuu/#published-scripts">TradingView</a>
 💬 <b>Chat Kanalı:</b> <a href="https://t.me/+V8IdRen7SaBiNWFk">Katılmak için tıkla</a>
+
+💼 <b>Prop Firma (BEM Funding):</b> <a href="https://checkout.bemfunding.com/?ref=MALIBU">İndirimli Kayıt Linki</a>
 `;
+
+function scheduleDailyMessage() {
+  const now = new Date();
+  // Türkiye saati (UTC+3) hesabı
+  const trTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+
+  // Hedef saatler: 11:00 ve 23:00
+  const targets = [11, 23];
+  let nextTarget = null;
+
+  for (const hour of targets) {
+    let t = new Date(trTime);
+    t.setHours(hour, 0, 0, 0);
+    if (t > trTime) {
+      nextTarget = t;
+      break;
+    }
+  }
+
+  // Eğer bugün başka hedef kalmadıysa yarın sabah 11'e kur
+  if (!nextTarget) {
+    nextTarget = new Date(trTime);
+    nextTarget.setDate(nextTarget.getDate() + 1);
+    nextTarget.setHours(targets[0], 0, 0, 0);
+  }
+
+  const delay = nextTarget.getTime() - trTime.getTime();
+  console.log(`[BİLGİ] Bir sonraki mesaj ${nextTarget.toLocaleString('tr-TR')} zamanına kuruldu.`);
+
+  setTimeout(() => {
+    sendDailyMessage();
+    // İlk mesajdan sonra her 12 saatte bir tekrarla
+    setInterval(sendDailyMessage, 12 * 60 * 60 * 1000);
+  }, delay);
+}
 
 async function sendDailyMessage() {
   const MAIN_CHANNEL = ALLOWED_CHATS[0];
@@ -175,24 +212,6 @@ async function sendDailyMessage() {
       console.error('[HATA] Günlük mesaj gönderilemedi:', error.message);
     }
   }
-}
-
-function scheduleDailyMessage() {
-  const TARGET_HOUR = 20;
-  const TARGET_MINUTE = 30;
-
-  const now = new Date();
-  const trTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
-  let target = new Date(trTime);
-  target.setHours(TARGET_HOUR, TARGET_MINUTE, 0, 0);
-
-  if (trTime > target) target.setDate(target.getDate() + 1);
-
-  const delay = target.getTime() - trTime.getTime();
-  setTimeout(() => {
-    sendDailyMessage();
-    setInterval(sendDailyMessage, 24 * 60 * 60 * 1000);
-  }, delay);
 }
 
 scheduleDailyMessage();
