@@ -1,33 +1,27 @@
 const { Telegraf } = require('telegraf');
 require('dotenv').config();
 
-// 1. GÜVENLİK DUVARI: Eksik Değişken Kontrolü
+// 1. TEMEL YAPILANDIRMA
 if (!process.env.BOT_TOKEN) {
-  console.error('❌ KRİTİK HATA: BOT_TOKEN bulunamadı. Lütfen .env dosyasını kontrol edin veya ortam değişkenlerini ayarlayın.');
+  console.error('❌ HATA: BOT_TOKEN tanımlanmamış!');
   process.exit(1);
 }
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// 2. VERİ TİPİ KONTROLÜ: Konfigürasyonun "Zero-Trust" (Sıfır Güven) ile işlenmesi
 const rawChannelId = process.env.CHANNEL_ID || '';
-const ALLOWED_CHATS = rawChannelId.split(',')
-  .map(id => id.trim())
-  .filter(id => id !== '');
-
+const ALLOWED_CHATS = rawChannelId.split(',').map(id => id.trim()).filter(id => id !== '');
 const ADMIN_ID = (process.env.ADMIN_ID || '').toString();
 
-// In-memory state (Hafıza Yönetimi)
-const whitelist = new Set();
-let lastGroupMessageId = null;
+// Hafıza (In-memory)
 let lastDailyMessageId = null;
+let lastGroupMessageId = null;
+const whitelist = new Set();
 
-// Yardımcı fonksiyon: Chat ID yetkili mi?
-function isAuthorizedChat(chatId) {
-  return ALLOWED_CHATS.includes(chatId.toString());
-}
+const isAuthorizedChat = (id) => ALLOWED_CHATS.includes(id.toString());
 
-// --- DUYURU MESAJI VE MANTIK ---
+// --- DUYURU MANTIGI ---
+
 const DAILY_MESSAGE = `
 💎 <b>MALIBU PRZ SUITE: GÜNLÜK BÜLTEN</b>
 
@@ -39,22 +33,14 @@ Hizmetlerimize ve eğitimlerimize aşağıdaki butonlardan anında ulaşabilirsi
 
 async function sendDailyMessage() {
   const MAIN_CHANNEL = ALLOWED_CHATS[0];
-  if (!MAIN_CHANNEL) {
-    console.warn('[UYARI] Kanal ID tanımlı olmadığı için duyuru yapılamadı. Lütfen CHANNEL_ID değişkenini kontrol edin.');
-    return;
-  }
+  if (!MAIN_CHANNEL) return console.log('[UYARI] CHANNEL_ID eksik, duyuru atlanıyor.');
 
   try {
-    console.log(`[İŞLEM] Duyuru mesajı hazırlanıyor... Hedef: ${MAIN_CHANNEL}`);
+    console.log(`[DUYURU] Gönderiliyor: ${MAIN_CHANNEL}`);
     
-    // ESKİ MESAJI SİL (Hata korumalı - Fail-safe)
+    // Eski mesajı silmeyi dene
     if (lastDailyMessageId) {
-      try {
-        await bot.telegram.deleteMessage(MAIN_CHANNEL, lastDailyMessageId);
-        console.log('[BİLGİ] Eski mesaj temizlendi.');
-      } catch (e) {
-        console.log('[BİLGİ] Eski mesaj silinemedi (zaten yok veya çok eski).');
-      }
+      try { await bot.telegram.deleteMessage(MAIN_CHANNEL, lastDailyMessageId); } catch (e) {}
     }
 
     const keyboard = {
@@ -67,94 +53,66 @@ async function sendDailyMessage() {
       ]
     };
 
-    const sentMsg = await bot.telegram.sendMessage(MAIN_CHANNEL, DAILY_MESSAGE, { 
-      parse_mode: 'HTML',
-      reply_markup: keyboard
+    const sent = await bot.telegram.sendMessage(MAIN_CHANNEL, DAILY_MESSAGE, { 
+      parse_mode: 'HTML', 
+      reply_markup: keyboard 
     });
 
-    lastDailyMessageId = sentMsg.message_id;
+    lastDailyMessageId = sent.message_id;
 
-    // Otomatik Sabitleme (Pin) - Hata korumalı
-    try {
-      await bot.telegram.pinChatMessage(MAIN_CHANNEL, sentMsg.message_id, { disable_notification: false });
-      console.log('[BİLGİ] Duyuru sabitlendi.');
-    } catch (e) {
-      console.warn('[BİLGİ] Sabitleme yapılamadı (Bot yetkisi eksik olabilir).');
-    }
-
+    // Sabitle
+    try { await bot.telegram.pinChatMessage(MAIN_CHANNEL, sent.message_id); } catch (e) {}
+    
     console.log('[BAŞARI] Günlük mesaj kanala iletildi.');
-  } catch (error) {
-    console.error('[CRITICAL HATA] Duyuru gönderilirken bir sorun çıktı:', error.message);
-  }
-}
-
-// --- ZAMANLAYICI (SCHEDULER) ---
-function scheduleDailyMessage() {
-  try {
-    const now = new Date();
-    // Türkiye saati (UTC+3) hesabı
-    const trTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
-
-    // Hedef saatler: 11:00 ve 23:00
-    const targets = [11, 23];
-    let nextTarget = null;
-
-    for (const hour of targets) {
-      let t = new Date(trTime);
-      t.setHours(hour, 0, 0, 0);
-      if (t > trTime) {
-        nextTarget = t;
-        break;
-      }
-    }
-
-    // Eğer bugün başka hedef kalmadıysa yarın sabah 11'e kur
-    if (!nextTarget) {
-      nextTarget = new Date(trTime);
-      nextTarget.setDate(nextTarget.getDate() + 1);
-      nextTarget.setHours(targets[0], 0, 0, 0);
-    }
-
-    const delay = nextTarget.getTime() - trTime.getTime();
-    console.log(`[BİLGİ] Bir sonraki mesaj ${nextTarget.toLocaleString('tr-TR')} zamanına kuruldu.`);
-
-    setTimeout(() => {
-      sendDailyMessage();
-      // İlk mesajdan sonra her 12 saatte bir tekrarla
-      setInterval(sendDailyMessage, 12 * 60 * 60 * 1000);
-    }, delay);
   } catch (err) {
-    console.error('[HATA] Scheduler başlatılırken hata oluştu:', err.message);
+    console.error('[HATA] Mesaj gönderilemedi:', err.message);
   }
 }
 
-// --- KOMUTLAR (ADMIN) ---
+function scheduleDailyMessage() {
+  const now = new Date();
+  const trTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+  const targets = [11, 23];
+  let nextTarget = null;
 
-// /test_duyuru Komutu: Manuel tetikleme ve yetki bildirimi
+  for (const h of targets) {
+    let t = new Date(trTime);
+    t.setHours(h, 0, 0, 0);
+    if (t > trTime) { nextTarget = t; break; }
+  }
+
+  if (!nextTarget) {
+    nextTarget = new Date(trTime);
+    nextTarget.setDate(nextTarget.getDate() + 1);
+    nextTarget.setHours(targets[0], 0, 0, 0);
+  }
+
+  const delay = nextTarget.getTime() - trTime.getTime();
+  console.log(`[BİLGİ] Otomatik duyuru kuruldu: ${nextTarget.toLocaleString('tr-TR')}`);
+
+  setTimeout(() => {
+    sendDailyMessage();
+    setInterval(sendDailyMessage, 12 * 60 * 60 * 1000);
+  }, delay);
+}
+
+// --- KOMUTLAR ---
+
 bot.command('test_duyuru', async (ctx) => {
-  const senderId = (ctx.from.id || '').toString();
-  
-  if (senderId !== ADMIN_ID) {
-    console.warn(`[UYARI] Yetkisiz erişim denemesi! Gönderen ID: ${senderId}`);
-    return ctx.reply(`⛔ Yetkisiz işlem. 
-Sizin ID: ${senderId}
-Sistemde Kayıtlı Admin ID: ${ADMIN_ID || 'TANIMLANMAMIŞ!'}`);
+  if (ctx.from.id.toString() !== ADMIN_ID) {
+    return ctx.reply(`⛔ Yetkisiz. Sizin ID: ${ctx.from.id}, Beklenen: ${ADMIN_ID}`);
   }
-  
   await sendDailyMessage();
-  ctx.reply('✅ Test duyurusu başarıyla gönderildi.');
+  ctx.reply('✅ Duyuru gönderildi.');
 });
 
-bot.command('izinver', async (ctx) => {
+bot.command('izinver', (ctx) => {
   if (ctx.from.id.toString() !== ADMIN_ID) return;
-  const target = (ctx.message.text.split(' ')[1] || '').replace('@', '').toLowerCase();
-  if (target) {
-    whitelist.add(target);
-    ctx.reply(`✅ @${target} beyaz listeye eklendi.`);
-  }
+  const user = (ctx.message.text.split(' ')[1] || '').replace('@', '').toLowerCase();
+  if (user) { whitelist.add(user); ctx.reply(`✅ @${user} eklendi.`); }
 });
 
-// --- DİNLİYİCİLER (BAN MANTIGI) ---
+// --- DINLEYICILER ---
 
 bot.on('message', async (ctx) => {
   if (!isAuthorizedChat(ctx.chat.id) && ctx.chat.type !== 'private') return;
@@ -162,12 +120,10 @@ bot.on('message', async (ctx) => {
   if (user.id.toString() !== ADMIN_ID) {
     const fullName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase();
     if (fullName.includes('malibu')) {
-      try {
+      try { 
         await ctx.banChatMember(user.id);
-        if (ADMIN_ID) {
-          await ctx.telegram.sendMessage(ADMIN_ID, `🚨 <b>Taklit Engellendi:</b> ${fullName} (${user.id})`);
-        }
-      } catch (e) { console.error('Ban hatası:', e.message); }
+        console.log(`[BAN] Taklit engellendi: ${fullName}`);
+      } catch (e) {}
     }
   }
 });
@@ -180,36 +136,40 @@ bot.on('chat_member', async (ctx) => {
     if (!whitelist.has((user.username || '').toLowerCase())) {
       try {
         await ctx.banChatMember(user.id);
-        // Grup veda mesajı ve ID temizliği
         if (ctx.chat.id.toString() !== ALLOWED_CHATS[0]) {
-           if (lastGroupMessageId) {
+          if (lastGroupMessageId) {
              try { await ctx.telegram.deleteMessage(ctx.chat.id, lastGroupMessageId); } catch (e) {}
-           }
-           const sent = await ctx.reply(`[ ${user.username || user.first_name} ] Ayrıldı ve yasaklandı.`);
-           lastGroupMessageId = sent.message_id;
+          }
+          const sent = await ctx.reply(`[ ${user.username || user.first_name} ] Ayrıldı, peşinden banladık.`);
+          lastGroupMessageId = sent.message_id;
         }
-      } catch (e) { console.error('Ayrılma ban hatası:', e.message); }
+      } catch (e) {}
     }
   }
 });
 
-// --- BAŞLATMA ---
+// --- BASLATMA SIRALAMASI ---
 
-scheduleDailyMessage();
+console.log('[BAĞLANTI] Telegram ile bağlantı kuruluyor...');
 
 bot.launch({
   allowedUpdates: ['chat_member', 'message']
 })
 .then(() => {
-  console.log('✅ Bot başarıyla hazır ve dinlemede!');
-  console.log(`[BİLGİ] Yapılandırılmış Admin: ${ADMIN_ID || 'YOK'}`);
-  console.log(`[BİLGİ] Hedef Kanal Sayısı: ${ALLOWED_CHATS.length}`);
+  console.log('✅ [BAŞLATILDI] Bot aktif ve dinlemede!');
+  console.log(`[KONTROL] Admin: ${ADMIN_ID || 'YOK'}, Kanal: ${ALLOWED_CHATS[0] || 'YOK'}`);
+  
+  // Başarılı açılış sonrası zamanlayıcıları kur
+  scheduleDailyMessage();
+  
+  // İLK AÇILIŞ TESTİ (Anında Gönderim)
+  console.log('[BİLGİ] İlk açılış duyurusu gönderiliyor...');
+  sendDailyMessage();
 })
 .catch((err) => {
+  console.error('❌ [HATA] Bot başlatılamadı:', err.message);
   if (err.description && err.description.includes('Conflict')) {
-    console.error('🚨 409 CONFLICT: Bot başka bir sunucuda hali hazırda çalışıyor! Lütfen diğer tüm kopyaları kapatın veya Token yenileyin.');
-  } else {
-    console.error('❌ BAŞLATMA HATASI:', err.message);
+    console.error('>> ÖNERİ: Başka bir bot kopyasını kapatın veya token yenileyin.');
   }
 });
 
