@@ -249,6 +249,13 @@ async function sendDailyMessage() {
 
 scheduleDailyMessage();
 
+// MANUEL TEST KOMUTU (Sadece Admin)
+bot.command('test_duyuru', async (ctx) => {
+  if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
+  await sendDailyMessage();
+  ctx.reply('✅ Test duyurusu gönderildi.');
+});
+
 // Botu başlat
 bot.launch({
   allowedUpdates: ['chat_member', 'message']
