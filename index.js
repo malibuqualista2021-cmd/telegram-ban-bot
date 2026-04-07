@@ -7,7 +7,9 @@ if (!process.env.BOT_TOKEN) {
   process.exit(1);
 }
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+// Token başındaki veya sonundaki olası boşlukları temizle
+const token = process.env.BOT_TOKEN.trim();
+const bot = new Telegraf(token);
 
 const rawChannelId = process.env.CHANNEL_ID || '';
 const ALLOWED_CHATS = rawChannelId.split(',')
@@ -174,12 +176,17 @@ bot.on('chat_member', async (ctx) => {
 
 scheduleDailyMessage();
 
-console.log('[BAĞLANTI] Telegram ile bağlantı kuruluyor...');
+console.log('[İŞLEM] Telegram ile bağlantı test ediliyor...');
 
-// dropPendingUpdates: bot açılırken eski mesaj birikmesini temizler
-bot.launch({
-  allowedUpdates: ['chat_member', 'message'],
-  dropPendingUpdates: true
+// Önce Token'ın geçerliliğini ve ağ durumunu teyit et
+bot.telegram.getMe().then((me) => {
+  console.log(`✅ [BAĞLANTI] Token doğrulandı! Bot: @${me.username}`);
+  
+  // Eğer Token doğrulandıysa botu asıl dinleme moduna al
+  return bot.launch({
+    allowedUpdates: ['chat_member', 'message'],
+    dropPendingUpdates: true
+  });
 })
 .then(() => {
   console.log('✅ [BAŞLATILDI] Bot başarıyla hazır ve dinlemede!');
