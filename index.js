@@ -251,7 +251,17 @@ scheduleDailyMessage();
 
 // MANUEL TEST KOMUTU (Sadece Admin)
 bot.command('test_duyuru', async (ctx) => {
-  if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
+  const senderId = (ctx.from.id || '').toString();
+  const configAdminId = (process.env.ADMIN_ID || '').toString();
+  
+  console.log(`[BİLGİ] Test komutu denendi. Gönderen: ${senderId}, Beklenen: ${configAdminId}`);
+  
+  if (senderId !== configAdminId) {
+    return ctx.reply(`⛔ Yetkisiz işlem. 
+Sizin ID: ${senderId}
+Sistemde Beklenen: ${configAdminId || 'TANIMLANMAMIŞ!'}`);
+  }
+  
   await sendDailyMessage();
   ctx.reply('✅ Test duyurusu gönderildi.');
 });
