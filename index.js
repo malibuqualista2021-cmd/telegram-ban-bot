@@ -1,86 +1,191 @@
 const { Telegraf } = require('telegraf');
 require('dotenv').config();
 
-// 1. TEMEL YAPILANDIRMA
 if (!process.env.BOT_TOKEN) {
-  console.error('❌ HATA: BOT_TOKEN tanımlanmamış!');
+  console.error('HATA: .env dosyasında BOT_TOKEN tanımlanmamış!');
   process.exit(1);
 }
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-const rawChannelId = process.env.CHANNEL_ID || '';
-const ALLOWED_CHATS = rawChannelId.split(',').map(id => id.trim()).filter(id => id !== '');
-const ADMIN_ID = (process.env.ADMIN_ID || '').toString();
+// Chat ID'lerini listeye çevir ve temizle
+const ALLOWED_CHATS = (process.env.CHANNEL_ID || '').split(',').map(id => id.trim());
 
-// Hafıza (In-memory)
-let lastDailyMessageId = null;
-let lastGroupMessageId = null;
+// Beyaz liste (Whitelist)
 const whitelist = new Set();
 
-const isAuthorizedChat = (id) => ALLOWED_CHATS.includes(id.toString());
+// Son gönderilen grup mesajını takip etmek için (Hafızada tutulur)
+let lastGroupMessageId = null;
 
-// --- DUYURU MANTIGI ---
+// Yardımcı fonksiyon: Chat ID yetkili mi?
+function isAuthorizedChat(chatId) {
+  return ALLOWED_CHATS.includes(chatId.toString());
+}
 
-const DAILY_MESSAGE = `
-💎 <b>MALIBU PRZ SUITE: GÜNLÜK BÜLTEN</b>
+// /izinver komutu - Sadece admin kullanabilir
+bot.command('izinver', async (ctx) => {
+  if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
 
-<i>"Finansal piyasalarda kurumsal ayak izlerini takip edin. Algoritmik hassasiyet, profesyonel sonuçlar."</i>
+  const username = ctx.message.text.split(' ')[1];
+  if (!username) {
+    return ctx.reply('Lütfen bir kullanıcı adı girin. Örn: /izinver malibu');
+  }
 
-⚡️ <b>Hızlı Erişim Linkleri:</b>
-Hizmetlerimize ve eğitimlerimize aşağıdaki butonlardan anında ulaşabilirsiniz.
-`;
+  const cleanUsername = username.replace('@', '').toLowerCase();
+  whitelist.add(cleanUsername);
+  ctx.reply(`✅ @${cleanUsername} beyaz listeye eklendi. Bu kişi kanallardan ayrılsa bile banlanmayacak.`);
+});
 
-async function sendDailyMessage() {
-  const MAIN_CHANNEL = ALLOWED_CHATS[0];
-  if (!MAIN_CHANNEL) return console.log('[UYARI] CHANNEL_ID eksik, duyuru atlanıyor.');
+// /listele komutu
+bot.command('listele', (ctx) => {
+  if (ctx.from.id.toString() !== process.env.ADMIN_ID) return;
+  if (whitelist.size === 0) return ctx.reply('Beyaz liste boş.');
+  ctx.reply(`📋 Beyaz Liste:\n${Array.from(whitelist).map(u => `@${u}`).join('\n')}`);
+});
 
-  try {
-    console.log(`[DUYURU] Gönderiliyor: ${MAIN_CHANNEL}`);
-    
-    // Eski mesajı silmeyi dene
-    if (lastDailyMessageId) {
-      try { await bot.telegram.deleteMessage(MAIN_CHANNEL, lastDailyMessageId); } catch (e) {}
+// Mesajları dinle - İsim değişikliğini yakalamak için
+bot.on('message', async (ctx) => {
+  // Sadece listedeki chatlerde veya adminle özel mesajda çalış
+  if (!isAuthorizedChat(ctx.chat.id) && ctx.chat.type !== 'private') return;
+
+  const user = ctx.from;
+  const adminId = process.env.ADMIN_ID;
+
+  if (user.id.toString() !== adminId) {
+    const fullName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase();
+
+    if (fullName.includes('malibu') || fullName.replace(/\s/g, '').includes('malibu')) {
+      try {
+        console.log(`[TAKLİT TESPİTİ] ${user.first_name} ismini Malibu olarak değiştirdi! Banlanıyor...`);
+        await ctx.banChatMember(user.id);
+
+        if (adminId) {
+          await ctx.telegram.sendMessage(adminId, `🚨 <b>Taklit Girişimi Engellendi!</b>\n\n` +
+            `Bir kullanıcı ismini <b>Malibu</b> yaparak mesaj attı ve otomatijk olarak yasaklandı.\n\n` +
+            `👤 <b>Ad:</b> ${user.first_name} ${user.last_name || ''}\n` +
+            `🆔 <b>ID:</b> <code>${user.id}</code>\n` +
+            `📍 <b>Chat:</b> ${ctx.chat.title || ctx.chat.id}\n` +
+            `🔗 <b>Username:</b> @${user.username || 'yok'}`, { parse_mode: 'HTML' });
+        }
+      } catch (error) {
+        console.error('[HATA] Taklitçi banlanırken sorun oluştu:', error.message);
+      }
+      return;
+    }
+  }
+});
+
+// Chat member güncellemelerini dinle
+bot.on('chat_member', async (ctx) => {
+  // Sadece yetkili chatlerdeki ayrılmaları kontrol et
+  if (!isAuthorizedChat(ctx.chat.id)) return;
+
+  const { old_chat_member, new_chat_member } = ctx.update.chat_member;
+  const user = new_chat_member.user;
+  const chat = ctx.chat;
+
+  // Sadece AKTİF bir üye (admin, üye, kısıtlı) çıkarsa banla. 
+  // Banlı birinin banı kaldırılırsa (kicked -> left) işlem yapma.
+  const wasActive = ['member', 'administrator', 'restricted'].includes(old_chat_member.status);
+
+  if (new_chat_member.status === 'left' && wasActive) {
+    const username = (user.username || '').toLowerCase();
+
+    if (whitelist.has(username)) {
+      console.log(`[BEYAZ LISTE] ${user.first_name} (@${username}) listede olduğu için banlanmadı.`);
+      return;
     }
 
-    const keyboard = {
-      inline_keyboard: [
-        [{ text: "💎 Malibu Web Sitesi", url: "https://malibuta.com/" }],
-        [{ text: "💼 İndirimli Prop Kayıt", url: "https://checkout.bemfunding.com/?ref=MALIBU" }],
-        [{ text: "🎥 YouTube Eğitimleri", url: "https://www.youtube.com/@malibuuuu" }],
-        [{ text: "📊 TradingView Profili", url: "https://tr.tradingview.com/u/malibuuu/#published-scripts" }],
-        [{ text: "💬 Chat Kanalı", url: "https://t.me/+V8IdRen7SaBiNWFk" }]
-      ]
-    };
+    try {
+      console.log(`[AYRILMA] Kullanıcı ayrıldı: ${user.first_name} (@${user.username || 'yok'}) - ID: ${user.id} - Chat: ${chat.id}`);
+      await ctx.banChatMember(user.id);
 
-    const sent = await bot.telegram.sendMessage(MAIN_CHANNEL, DAILY_MESSAGE, { 
-      parse_mode: 'HTML', 
-      reply_markup: keyboard 
-    });
+      // Admin'e bildirim
+      const adminId = process.env.ADMIN_ID;
+      if (adminId) {
+        const message = `🚫 <b>Kullanıcı Yasaklandı</b>\n\n` +
+          `👤 <b>Ad:</b> ${user.first_name}\n` +
+          `🆔 <b>ID:</b> <code>${user.id}</code>\n` +
+          `🔗 <b>Username:</b> @${user.username || 'yok'}\n` +
+          `📍 <b>Kaynak:</b> ${chat.title || chat.id}`;
 
-    lastDailyMessageId = sent.message_id;
+        await ctx.telegram.sendMessage(adminId, message, { parse_mode: 'HTML' });
+      }
 
-    // Sabitle
-    try { await bot.telegram.pinChatMessage(MAIN_CHANNEL, sent.message_id); } catch (e) {}
-    
-    console.log('[BAŞARI] Günlük mesaj kanala iletildi.');
-  } catch (err) {
-    console.error('[HATA] Mesaj gönderilemedi:', err.message);
+      // --- GRUP CHATİNE ÖZEL MESAJ ---
+      // Eğer bu chat bir kanal değilse (yani grup ise) ve ALLOWED_CHATS içindeki 1. ID değilse
+      if (chat.id.toString() !== ALLOWED_CHATS[0]) {
+
+        // KANAL SENKRONİZASYON KONTROLÜ
+        // Eğer kişi kanaldan da ayrılmışsa, gruba mesaj atma (zaten kanalda banlanmıştır)
+        try {
+          const channelMember = await ctx.telegram.getChatMember(ALLOWED_CHATS[0], user.id);
+          if (channelMember.status === 'left' || channelMember.status === 'kicked') {
+            console.log(`[BİLGİ] Kullanıcı kanaldan da ayrıldığı için gruba veda mesajı atılmadı.`);
+            return;
+          }
+        } catch (e) {
+          // Kanalda bulunamazsa veya hata olursa devam et
+        }
+
+        // ESKİ MESAJI SİL
+        if (lastGroupMessageId) {
+          try {
+            await ctx.telegram.deleteMessage(chat.id, lastGroupMessageId);
+            console.log(`[BİLGİ] Eski ban mesajı silindi.`);
+          } catch (e) {
+            // Mesaj çok eskiyse veya silinemezse hata verme
+          }
+        }
+
+        const userDisplayName = user.username ? `@${user.username}` : user.first_name;
+        const groupMessage = `[ ${userDisplayName} ] Çıktı. Biz de “ya geri gelirse” diye banladık. Kılıcımız keskin sevgimiz sonsuz 😂`;
+
+        const sentMsg = await ctx.telegram.sendMessage(chat.id, groupMessage);
+        lastGroupMessageId = sentMsg.message_id; // Yeni ID'yi kaydet
+        console.log(`[BİLGİ] Grup chatine yeni ban mesajı gönderildi.`);
+      }
+      // ----------------------------
+
+    } catch (error) {
+      console.error(`[HATA] İşlem başarısız (${user.id}):`, error.description || error.message);
+    }
   }
-}
+});
+
+// --- OTOMATİK MESAJ AYARLARI ---
+const DAILY_MESSAGE = `
+📢 <b>Malibu İndikatör & Eğitim Linkleri</b>
+
+💎 <b>Ücretli İndikatörler:</b> <a href="https://malibuta.com/">malibuta.com</a>
+📊 <b>Trade Journali:</b> <a href="https://masterclassjournall.netlify.app/">masterclassjournall.netlify.app</a>
+🎥 <b>YouTube Eğitimleri:</b> <a href="https://www.youtube.com/@malibuuuu">youtube.com/@malibuuuu</a>
+🐦 <b>X (Twitter):</b> <a href="https://x.com/maliibu">x.com/maliibu</a>
+📈 <b>Tüm İndikatörler:</b> <a href="https://tr.tradingview.com/u/malibuuu/#published-scripts">TradingView</a>
+💬 <b>Chat Kanalı:</b> <a href="https://t.me/+V8IdRen7SaBiNWFk">Katılmak için tıkla</a>
+
+💼 <b>Prop Firma (BEM Funding):</b> <a href="https://checkout.bemfunding.com/?ref=MALIBU">İndirimli Kayıt Linki</a>
+`;
 
 function scheduleDailyMessage() {
   const now = new Date();
+  // Türkiye saati (UTC+3) hesabı
   const trTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
+
+  // Hedef saatler: 11:00 ve 23:00
   const targets = [11, 23];
   let nextTarget = null;
 
-  for (const h of targets) {
+  for (const hour of targets) {
     let t = new Date(trTime);
-    t.setHours(h, 0, 0, 0);
-    if (t > trTime) { nextTarget = t; break; }
+    t.setHours(hour, 0, 0, 0);
+    if (t > trTime) {
+      nextTarget = t;
+      break;
+    }
   }
 
+  // Eğer bugün başka hedef kalmadıysa yarın sabah 11'e kur
   if (!nextTarget) {
     nextTarget = new Date(trTime);
     nextTarget.setDate(nextTarget.getDate() + 1);
@@ -88,90 +193,36 @@ function scheduleDailyMessage() {
   }
 
   const delay = nextTarget.getTime() - trTime.getTime();
-  console.log(`[BİLGİ] Otomatik duyuru kuruldu: ${nextTarget.toLocaleString('tr-TR')}`);
+  console.log(`[BİLGİ] Bir sonraki mesaj ${nextTarget.toLocaleString('tr-TR')} zamanına kuruldu.`);
 
   setTimeout(() => {
     sendDailyMessage();
+    // İlk mesajdan sonra her 12 saatte bir tekrarla
     setInterval(sendDailyMessage, 12 * 60 * 60 * 1000);
   }, delay);
 }
 
-// --- KOMUTLAR ---
-
-bot.command('test_duyuru', async (ctx) => {
-  if (ctx.from.id.toString() !== ADMIN_ID) {
-    return ctx.reply(`⛔ Yetkisiz. Sizin ID: ${ctx.from.id}, Beklenen: ${ADMIN_ID}`);
-  }
-  await sendDailyMessage();
-  ctx.reply('✅ Duyuru gönderildi.');
-});
-
-bot.command('izinver', (ctx) => {
-  if (ctx.from.id.toString() !== ADMIN_ID) return;
-  const user = (ctx.message.text.split(' ')[1] || '').replace('@', '').toLowerCase();
-  if (user) { whitelist.add(user); ctx.reply(`✅ @${user} eklendi.`); }
-});
-
-// --- DINLEYICILER ---
-
-bot.on('message', async (ctx) => {
-  if (!isAuthorizedChat(ctx.chat.id) && ctx.chat.type !== 'private') return;
-  const user = ctx.from;
-  if (user.id.toString() !== ADMIN_ID) {
-    const fullName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase();
-    if (fullName.includes('malibu')) {
-      try { 
-        await ctx.banChatMember(user.id);
-        console.log(`[BAN] Taklit engellendi: ${fullName}`);
-      } catch (e) {}
+async function sendDailyMessage() {
+  const MAIN_CHANNEL = ALLOWED_CHATS[0];
+  if (MAIN_CHANNEL) {
+    try {
+      await bot.telegram.sendMessage(MAIN_CHANNEL, DAILY_MESSAGE, { parse_mode: 'HTML' });
+      console.log('[BİLGİ] Günlük mesaj ana kanala gönderildi.');
+    } catch (error) {
+      console.error('[HATA] Günlük mesaj gönderilemedi:', error.message);
     }
   }
-});
+}
 
-bot.on('chat_member', async (ctx) => {
-  if (!isAuthorizedChat(ctx.chat.id)) return;
-  const { old_chat_member, new_chat_member } = ctx.update.chat_member;
-  if (new_chat_member.status === 'left' && ['member', 'administrator', 'restricted'].includes(old_chat_member.status)) {
-    const user = new_chat_member.user;
-    if (!whitelist.has((user.username || '').toLowerCase())) {
-      try {
-        await ctx.banChatMember(user.id);
-        if (ctx.chat.id.toString() !== ALLOWED_CHATS[0]) {
-          if (lastGroupMessageId) {
-             try { await ctx.telegram.deleteMessage(ctx.chat.id, lastGroupMessageId); } catch (e) {}
-          }
-          const sent = await ctx.reply(`[ ${user.username || user.first_name} ] Ayrıldı, peşinden banladık.`);
-          lastGroupMessageId = sent.message_id;
-        }
-      } catch (e) {}
-    }
-  }
-});
+scheduleDailyMessage();
 
-// --- BASLATMA SIRALAMASI ---
-
-console.log('[BAĞLANTI] Telegram ile bağlantı kuruluyor...');
-
+// Botu başlat
 bot.launch({
   allowedUpdates: ['chat_member', 'message']
-})
-.then(() => {
-  console.log('✅ [BAŞLATILDI] Bot aktif ve dinlemede!');
-  console.log(`[KONTROL] Admin: ${ADMIN_ID || 'YOK'}, Kanal: ${ALLOWED_CHATS[0] || 'YOK'}`);
-  
-  // Başarılı açılış sonrası zamanlayıcıları kur
-  scheduleDailyMessage();
-  
-  // İLK AÇILIŞ TESTİ (Anında Gönderim)
-  console.log('[BİLGİ] İlk açılış duyurusu gönderiliyor...');
-  sendDailyMessage();
-})
-.catch((err) => {
-  console.error('❌ [HATA] Bot başlatılamadı:', err.message);
-  if (err.description && err.description.includes('Conflict')) {
-    console.error('>> ÖNERİ: Başka bir bot kopyasını kapatın veya token yenileyin.');
-  }
+}).then(() => {
+  console.log(`Bot başarıyla başlatıldı. Dinlenen chat sayısı: ${ALLOWED_CHATS.length}`);
 });
 
+bot.catch((err) => console.error('Bot hatası:', err));
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
