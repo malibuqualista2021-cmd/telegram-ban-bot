@@ -1,15 +1,25 @@
-const { Telegraf } = require('telegraf');
-require('dotenv').config();
+// 1. Ortam Değişkenleri Yükleme Kontrolü
+const envResult = require('dotenv').config();
+if (envResult.error) {
+  console.log('[BİLGİ] .env dosyası bulunamadı, sistem değişkenleri kullanılıyor.');
+}
 
 if (!process.env.BOT_TOKEN) {
-  console.error('HATA: .env dosyasında BOT_TOKEN tanımlanmamış!');
+  console.error('CRITICAL HATA: BOT_TOKEN bulunamadı!');
   process.exit(1);
 }
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// Chat ID'lerini listeye çevir ve temizle
-const ALLOWED_CHATS = (process.env.CHANNEL_ID || '').split(',').map(id => id.trim());
+// 2. Chat ID Yapılandırması (Cerrah Titizliğiyle)
+const rawChannelId = process.env.CHANNEL_ID || '';
+const ALLOWED_CHATS = rawChannelId.split(',')
+  .map(id => id.trim())
+  .filter(id => id !== '');
+
+if (ALLOWED_CHATS.length === 0) {
+  console.warn('[UYARI] CHANNEL_ID tanımlanmamış. Bot duyuru yapamaz!');
+}
 
 // Beyaz liste (Whitelist)
 const whitelist = new Set();
@@ -202,52 +212,65 @@ function scheduleDailyMessage() {
 
 async function sendDailyMessage() {
   const MAIN_CHANNEL = ALLOWED_CHATS[0];
-  if (MAIN_CHANNEL) {
-    try {
-      // EĞER ESKİ BİR MESAJ VARSA SİL
-      if (lastDailyMessageId) {
-        try {
-          await bot.telegram.deleteMessage(MAIN_CHANNEL, lastDailyMessageId);
-          console.log('[BİLGİ] Eski günlük mesaj temizlendi.');
-        } catch (e) {
-          console.log('[BİLGİ] Eski mesaj bulunamadı veya süresi dolmuş (silinemedi).');
-        }
-      }
+  if (!MAIN_CHANNEL) {
+    console.error('[HATA] Mesaj gönderilecek Kanal ID (CHANNEL_ID) bulunamadı.');
+    return;
+  }
 
-      // YENİ DÜZENLİ BUTONLAR
-      const keyboard = {
-        inline_keyboard: [
-          [{ text: "💎 Malibu Web Sitesi", url: "https://malibuta.com/" }],
-          [{ text: "💼 İndirimli Prop Kayıt", url: "https://checkout.bemfunding.com/?ref=MALIBU" }],
-          [{ text: "🎥 YouTube Eğitimleri", url: "https://www.youtube.com/@malibuuuu" }],
-          [{ text: "📊 TradingView Profili", url: "https://tr.tradingview.com/u/malibuuu/#published-scripts" }],
-          [{ text: "💬 Chat Kanalı", url: "https://t.me/+V8IdRen7SaBiNWFk" }]
-        ]
-      };
-
-      const sentMsg = await bot.telegram.sendMessage(MAIN_CHANNEL, DAILY_MESSAGE, { 
-        parse_mode: 'HTML',
-        reply_markup: keyboard
-      });
-
-      lastDailyMessageId = sentMsg.message_id; // Yeni mesajın ID'sini kaydet
-      
-      // Mesajı otomatik sabitle (Bildirim gitmesi için)
+  try {
+    console.log(`[İŞLEM] Duyuru gönderiliyor... Hedef: ${MAIN_CHANNEL}`);
+    
+    // EĞER ESKİ BİR MESAJ VARSA SİL (Hata korumalı)
+    if (lastDailyMessageId) {
       try {
-        await bot.telegram.pinChatMessage(MAIN_CHANNEL, sentMsg.message_id, { disable_notification: false });
-        console.log('[BİLGİ] Yeni günlük mesaj sabitlendi.');
-      } catch (pinError) {
-        console.error('[HATA] Mesaj sabitlenemedi:', pinError.message);
+        await bot.telegram.deleteMessage(MAIN_CHANNEL, lastDailyMessageId);
+        console.log('[BİLGİ] Eski mesaj temizlendi.');
+      } catch (e) {
+        console.log('[BİLGİ] Eski mesaj silinemedi (zaten yok veya çok eski).');
       }
-
-      console.log('[BİLGİ] Günlük mesaj ana kanala gönderildi.');
-    } catch (error) {
-      console.error('[HATA] Günlük mesaj gönderilemedi:', error.message);
     }
+
+    const keyboard = {
+      inline_keyboard: [
+        [{ text: "💎 Malibu Web Sitesi", url: "https://malibuta.com/" }],
+        [{ text: "💼 İndirimli Prop Kayıt", url: "https://checkout.bemfunding.com/?ref=MALIBU" }],
+        [{ text: "🎥 YouTube Eğitimleri", url: "https://www.youtube.com/@malibuuuu" }],
+        [{ text: "📊 TradingView Profili", url: "https://tr.tradingview.com/u/malibuuu/#published-scripts" }],
+        [{ text: "💬 Chat Kanalı", url: "https://t.me/+V8IdRen7SaBiNWFk" }]
+      ]
+    };
+
+    const sentMsg = await bot.telegram.sendMessage(MAIN_CHANNEL, DAILY_MESSAGE, { 
+      parse_mode: 'HTML',
+      reply_markup: keyboard
+    });
+
+    lastDailyMessageId = sentMsg.message_id;
+    
+    // Sabitleme İşlemi (Hata korumalı)
+    try {
+      await bot.telegram.pinChatMessage(MAIN_CHANNEL, sentMsg.message_id, { disable_notification: false });
+      console.log('[BİLGİ] Duyuru sabitlendi.');
+    } catch (pError) {
+      console.log('[BİLGİ] Sabitleme yetkisi yok veya hata oluştu.');
+    }
+
+    console.log('[BAŞARI] Günlük mesaj kanala iletildi.');
+  } catch (error) {
+    console.error('[CRITICAL HATA] Mesaj gönderilirken bir sorun çıktı:', error.message);
   }
 }
 
+// ---------------------------------------------------------
+// 3. Başlatma Sıralaması (Surgical Order)
+// ---------------------------------------------------------
+
+// Önce zamanlayıcıyı kur
 scheduleDailyMessage();
+
+// AÇILIŞ TESTİ: Bot açılır açılmaz bir kere mesaj gönder (Conflict olsa bile ilk anda çalışır)
+console.log('[BİLGİ] Açılış testi tetikleniyor...');
+sendDailyMessage();
 
 // MANUEL TEST KOMUTU (Sadece Admin)
 bot.command('test_duyuru', async (ctx) => {
