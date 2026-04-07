@@ -157,16 +157,12 @@ bot.on('chat_member', async (ctx) => {
 
 // --- OTOMATİK MESAJ AYARLARI ---
 const DAILY_MESSAGE = `
-📢 <b>Malibu İndikatör & Eğitim Linkleri</b>
+💎 <b>MALIBU PRZ SUITE: GÜNLÜK BÜLTEN</b>
 
-💎 <b>Ücretli İndikatörler:</b> <a href="https://malibuta.com/">malibuta.com</a>
-📊 <b>Trade Journali:</b> <a href="https://masterclassjournall.netlify.app/">masterclassjournall.netlify.app</a>
-🎥 <b>YouTube Eğitimleri:</b> <a href="https://www.youtube.com/@malibuuuu">youtube.com/@malibuuuu</a>
-🐦 <b>X (Twitter):</b> <a href="https://x.com/maliibu">x.com/maliibu</a>
-📈 <b>Tüm İndikatörler:</b> <a href="https://tr.tradingview.com/u/malibuuu/#published-scripts">TradingView</a>
-💬 <b>Chat Kanalı:</b> <a href="https://t.me/+V8IdRen7SaBiNWFk">Katılmak için tıkla</a>
+<i>"Finansal piyasalarda kurumsal ayak izlerini takip edin. Algoritmik hassasiyet, profesyonel sonuçlar."</i>
 
-💼 <b>Prop Firma (BEM Funding):</b> <a href="https://checkout.bemfunding.com/?ref=MALIBU">İndirimli Kayıt Linki</a>
+⚡️ <b>Hızlı Erişim Linkleri:</b>
+Hizmetlerimize ve eğitimlerimize aşağıdaki butonlardan anında ulaşabilirsiniz.
 `;
 
 function scheduleDailyMessage() {
@@ -218,8 +214,32 @@ async function sendDailyMessage() {
         }
       }
 
-      const sentMsg = await bot.telegram.sendMessage(MAIN_CHANNEL, DAILY_MESSAGE, { parse_mode: 'HTML' });
+      // YENİ DÜZENLİ BUTONLAR
+      const keyboard = {
+        inline_keyboard: [
+          [{ text: "💎 Malibu Web Sitesi", url: "https://malibuta.com/" }],
+          [{ text: "💼 İndirimli Prop Kayıt", url: "https://checkout.bemfunding.com/?ref=MALIBU" }],
+          [{ text: "🎥 YouTube Eğitimleri", url: "https://www.youtube.com/@malibuuuu" }],
+          [{ text: "📊 TradingView Profili", url: "https://tr.tradingview.com/u/malibuuu/#published-scripts" }],
+          [{ text: "💬 VIP Chat Kanalı", url: "https://t.me/+V8IdRen7SaBiNWFk" }]
+        ]
+      };
+
+      const sentMsg = await bot.telegram.sendMessage(MAIN_CHANNEL, DAILY_MESSAGE, { 
+        parse_mode: 'HTML',
+        reply_markup: keyboard
+      });
+
       lastDailyMessageId = sentMsg.message_id; // Yeni mesajın ID'sini kaydet
+      
+      // Mesajı otomatik sabitle (Bildirim gitmesi için)
+      try {
+        await bot.telegram.pinChatMessage(MAIN_CHANNEL, sentMsg.message_id, { disable_notification: false });
+        console.log('[BİLGİ] Yeni günlük mesaj sabitlendi.');
+      } catch (pinError) {
+        console.error('[HATA] Mesaj sabitlenemedi:', pinError.message);
+      }
+
       console.log('[BİLGİ] Günlük mesaj ana kanala gönderildi.');
     } catch (error) {
       console.error('[HATA] Günlük mesaj gönderilemedi:', error.message);
