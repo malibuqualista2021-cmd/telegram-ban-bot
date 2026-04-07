@@ -221,7 +221,7 @@ async function sendDailyMessage() {
           [{ text: "💼 İndirimli Prop Kayıt", url: "https://checkout.bemfunding.com/?ref=MALIBU" }],
           [{ text: "🎥 YouTube Eğitimleri", url: "https://www.youtube.com/@malibuuuu" }],
           [{ text: "📊 TradingView Profili", url: "https://tr.tradingview.com/u/malibuuu/#published-scripts" }],
-          [{ text: "💬 VIP Chat Kanalı", url: "https://t.me/+V8IdRen7SaBiNWFk" }]
+          [{ text: "💬 Chat Kanalı", url: "https://t.me/+V8IdRen7SaBiNWFk" }]
         ]
       };
 
