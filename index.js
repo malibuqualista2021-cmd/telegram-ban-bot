@@ -179,10 +179,17 @@ scheduleDailyMessage();
 console.log('[İŞLEM] Telegram ile bağlantı test ediliyor...');
 
 // Önce Token'ın geçerliliğini ve ağ durumunu teyit et
-bot.telegram.getMe().then((me) => {
-  console.log(`✅ [BAĞLANTI] Token doğrulandı! Bot: @${me.username}`);
+bot.telegram.getMe().then(async (me) => {
+  // Eğer Token doğrulandıysa, önce varsa eski Webhook'u silip temiz bir sayfa aç
+  console.log('[İŞLEM] Varsa eski Webhook bağlantıları temizleniyor...');
+  try {
+    await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+    console.log('✅ [WEBHOOK] Eski bağlantılar temizlendi. Dinleme başlıyor...');
+  } catch (e) {
+    console.log('[BİLGİ] Webhook temizlenemedi veya zaten yok (bu normal).');
+  }
   
-  // Eğer Token doğrulandıysa botu asıl dinleme moduna al
+  // Şimdi botu asıl dinleme moduna al
   return bot.launch({
     allowedUpdates: ['chat_member', 'message'],
     dropPendingUpdates: true
