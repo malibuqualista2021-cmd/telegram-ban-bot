@@ -260,7 +260,10 @@ bot.command('test_duyuru', async (ctx) => {
 bot.launch({
   allowedUpdates: ['chat_member', 'message']
 }).then(() => {
-  console.log(`Bot başarıyla başlatıldı. Dinlenen chat sayısı: ${ALLOWED_CHATS.length}`);
+  console.log(`[BİLGİ] Bot başarıyla başlatıldı.`);
+  console.log(`[BİLGİ] Dinlenen yetkili chat sayısı: ${ALLOWED_CHATS.length}`);
+  console.log(`[BİLGİ] Ana Kanal ID: ${ALLOWED_CHATS[0] || 'TANIMLANMAMIŞ!'}`);
+  console.log(`[BİLGİ] Admin ID: ${process.env.ADMIN_ID || 'TANIMLANMAMIŞ!'}`);
 });
 
 bot.catch((err) => console.error('Bot hatası:', err));
