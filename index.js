@@ -184,24 +184,24 @@ bot.telegram.getMe().then(async (me) => {
   console.log('[İŞLEM] Varsa eski Webhook bağlantıları temizleniyor...');
   try {
     await bot.telegram.deleteWebhook({ drop_pending_updates: true });
-    console.log('✅ [WEBHOOK] Eski bağlantılar temizlendi. Dinleme başlıyor...');
+    console.log('✅ [WEBHOOK] Eski bağlantılar temizlendi.');
   } catch (e) {
     console.log('[BİLGİ] Webhook temizlenemedi veya zaten yok (bu normal).');
   }
+
+  // Başarı mesajlarını ve ilk testi launch öncesine al (Telegraf 4.x uyumu için)
+  console.log(`✅ [BAĞLANTI] Token doğrulandı! Bot: @${me.username}`);
+  console.log('✅ [BAŞLATILDI] Bot başarıyla hazır ve dinlemede!');
+  console.log(`[KONTROL] Admin: ${ADMIN_ID || 'YOK'}, Kanal: ${ALLOWED_CHATS[0] || 'YOK'}`);
+  
+  console.log('[İŞLEM] İlk açılış testi gönderiliyor...');
+  sendDailyMessage();
   
   // Şimdi botu asıl dinleme moduna al
   return bot.launch({
     allowedUpdates: ['chat_member', 'message'],
     dropPendingUpdates: true
   });
-})
-.then(() => {
-  console.log('✅ [BAŞLATILDI] Bot başarıyla hazır ve dinlemede!');
-  console.log(`[KONTROL] Admin: ${ADMIN_ID || 'YOK'}, Kanal: ${ALLOWED_CHATS[0] || 'YOK'}`);
-  
-  // İlk açılış testi (Hemen Gönderim)
-  console.log('[İŞLEM] İlk açılış testi gönderiliyor...');
-  sendDailyMessage();
 })
 .catch((err) => {
   if (err.description && err.description.includes('Conflict')) {
