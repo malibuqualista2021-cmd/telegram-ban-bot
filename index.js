@@ -14,8 +14,10 @@ const ALLOWED_CHATS = (process.env.CHANNEL_ID || '').split(',').map(id => id.tri
 // Beyaz liste (Whitelist)
 const whitelist = new Set();
 
-// Son gönderilen grup mesajını takip etmek için (Hafızada tutulur)
+// Son gönderilen grup/ban mesajını takip etmek için (Hafızada tutulur)
 let lastGroupMessageId = null;
+// Son gönderilen GÜNLÜK duyuru mesajını takip etmek için
+let lastDailyMessageId = null;
 
 // Yardımcı fonksiyon: Chat ID yetkili mi?
 function isAuthorizedChat(chatId) {
@@ -206,7 +208,18 @@ async function sendDailyMessage() {
   const MAIN_CHANNEL = ALLOWED_CHATS[0];
   if (MAIN_CHANNEL) {
     try {
-      await bot.telegram.sendMessage(MAIN_CHANNEL, DAILY_MESSAGE, { parse_mode: 'HTML' });
+      // EĞER ESKİ BİR MESAJ VARSA SİL
+      if (lastDailyMessageId) {
+        try {
+          await bot.telegram.deleteMessage(MAIN_CHANNEL, lastDailyMessageId);
+          console.log('[BİLGİ] Eski günlük mesaj temizlendi.');
+        } catch (e) {
+          console.log('[BİLGİ] Eski mesaj bulunamadı veya süresi dolmuş (silinemedi).');
+        }
+      }
+
+      const sentMsg = await bot.telegram.sendMessage(MAIN_CHANNEL, DAILY_MESSAGE, { parse_mode: 'HTML' });
+      lastDailyMessageId = sentMsg.message_id; // Yeni mesajın ID'sini kaydet
       console.log('[BİLGİ] Günlük mesaj ana kanala gönderildi.');
     } catch (error) {
       console.error('[HATA] Günlük mesaj gönderilemedi:', error.message);
