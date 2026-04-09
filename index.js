@@ -147,7 +147,20 @@ bot.on('message', async (ctx) => {
       try {
         await ctx.banChatMember(user.id);
         console.log(`[TAKLİT] Engellendi: ${fullName}`);
-      } catch (e) {}
+        
+        // Admin'e Rapor Gönder
+        if (ADMIN_ID) {
+          const report = `🚨 <b>Taklit Girişimi Engellendi!</b>\n\n` +
+            `Bir kullanıcı ismini <b>Malibu</b> yaparak mesaj attı ve yasaklandı.\n\n` +
+            `👤 <b>Ad:</b> ${user.first_name} ${user.last_name || ''}\n` +
+            `🆔 <b>ID:</b> <code>${user.id}</code>\n` +
+            `📍 <b>Chat:</b> ${ctx.chat.title || ctx.chat.id}\n` +
+            `🔗 <b>Username:</b> @${user.username || 'yok'}`;
+          await ctx.telegram.sendMessage(ADMIN_ID, report, { parse_mode: 'HTML' }).catch(() => {});
+        }
+      } catch (e) {
+        console.error('[HATA] Taklitçi banlanırken sorun oluştu:', e.message);
+      }
     }
   }
 });
@@ -155,11 +168,29 @@ bot.on('message', async (ctx) => {
 bot.on('chat_member', async (ctx) => {
   if (!isAuthorizedChat(ctx.chat.id)) return;
   const { old_chat_member, new_chat_member } = ctx.update.chat_member;
-  if (new_chat_member.status === 'left' && ['member', 'administrator', 'restricted'].includes(old_chat_member.status)) {
+  
+  // Sadece üye (member, admin, restricted) olan bir kişi çıkarsa (left) banla
+  const wasActive = ['member', 'administrator', 'restricted'].includes(old_chat_member.status);
+  
+  if (new_chat_member.status === 'left' && wasActive) {
     const user = new_chat_member.user;
     if (!whitelist.has((user.username || '').toLowerCase())) {
       try {
+        console.log(`[AYRILMA] Kullanıcı yasaklanıyor: ${user.first_name} (@${user.username || 'yok'})`);
         await ctx.banChatMember(user.id);
+
+        // Admin'e Rapor Gönder
+        if (ADMIN_ID) {
+          const report = `🚫 <b>Kullanıcı Yasaklandı (Ayrılma)</b>\n\n` +
+            `Bir kullanıcı gruptan veya kanaldan ayrıldığı için yasaklandı.\n\n` +
+            `👤 <b>Ad:</b> ${user.first_name}\n` +
+            `🆔 <b>ID:</b> <code>${user.id}</code>\n` +
+            `🔗 <b>Username:</b> @${user.username || 'yok'}\n` +
+            `📍 <b>Kaynak:</b> ${ctx.chat.title || ctx.chat.id}`;
+          await ctx.telegram.sendMessage(ADMIN_ID, report, { parse_mode: 'HTML' }).catch(() => {});
+        }
+
+        // Eğer bu ana kanal DEĞİLSE (yani bir grupsa), gruba veda mesajı at
         if (ctx.chat.id.toString() !== ALLOWED_CHATS[0]) {
           if (lastGroupMessageId) {
              try { await ctx.telegram.deleteMessage(ctx.chat.id, lastGroupMessageId); } catch (e) {}
@@ -167,7 +198,12 @@ bot.on('chat_member', async (ctx) => {
           const sent = await ctx.reply(`[ ${user.username || user.first_name} ] Ayrıldı, peşinden banladık.`);
           lastGroupMessageId = sent.message_id;
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error(`[HATA] Ayrılan kullanıcı banlanırken sorun oluştu:`, e.message);
+        if (ADMIN_ID) {
+          await ctx.telegram.sendMessage(ADMIN_ID, `❌ <b>Yasaklama Hatası</b>\n\nID: <code>${user.id}</code> için yasaklama başarısız.\nSebep: ${e.message}`, { parse_mode: 'HTML' }).catch(() => {});
+        }
+      }
     }
   }
 });
