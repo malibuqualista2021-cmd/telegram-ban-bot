@@ -1,5 +1,28 @@
 const { Telegraf } = require('telegraf');
+const fs = require('fs');
 require('dotenv').config();
+
+const STATE_FILE = './state.json';
+
+// --- HAFIZA YÖNETİMİ (PERSISTENCE) ---
+function loadState() {
+  try {
+    if (fs.existsSync(STATE_FILE)) {
+      return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    }
+  } catch (e) {
+    console.error('[HATA] Hafıza yüklenemedi:', e.message);
+  }
+  return {};
+}
+
+function saveState(data) {
+  try {
+    fs.writeFileSync(STATE_FILE, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error('[HATA] Hafıza kaydedilemedi:', e.message);
+  }
+}
 
 // 1. GÜVENLİK VE YAPILANDIRMA
 if (!process.env.BOT_TOKEN) {
@@ -21,7 +44,7 @@ const ADMIN_ID = (process.env.ADMIN_ID || '').toString();
 // In-memory state (Hafıza Yönetimi)
 const whitelist = new Set();
 let lastGroupMessageId = null;
-let lastDailyMessageId = null;
+let lastDailyMessageId = loadState().lastDailyMessageId || null;
 
 // Yardımcı fonksiyon: Chat ID yetkili mi?
 function isAuthorizedChat(chatId) {
@@ -74,6 +97,7 @@ async function sendDailyMessage() {
     });
 
     lastDailyMessageId = sentMsg.message_id;
+    saveState({ lastDailyMessageId }); // Kalıcı hafızaya kaydet
 
     // Otomatik Sabitleme (Pin)
     try {
@@ -94,7 +118,7 @@ function scheduleDailyMessage() {
   try {
     const now = new Date();
     const trTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
-    const targets = [11, 23];
+    const targets = [9, 21];
     let nextTarget = null;
 
     for (const hour of targets) {
@@ -230,8 +254,7 @@ bot.telegram.getMe().then(async (me) => {
   console.log('✅ [BAŞLATILDI] Bot başarıyla hazır ve dinlemede!');
   console.log(`[KONTROL] Admin: ${ADMIN_ID || 'YOK'}, Kanal: ${ALLOWED_CHATS[0] || 'YOK'}`);
   
-  console.log('[İŞLEM] İlk açılış testi gönderiliyor...');
-  sendDailyMessage();
+  // Artık açılışta otomatik mesaj gönderilmiyor. Sadece 09:00 ve 21:00.
   
   // Şimdi botu asıl dinleme moduna al
   return bot.launch({
