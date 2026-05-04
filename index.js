@@ -118,7 +118,7 @@ function scheduleDailyMessage() {
   try {
     const now = new Date();
     const trTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
-    const targets = [9, 21];
+    const targets = [22];
     let nextTarget = null;
 
     for (const hour of targets) {
@@ -138,7 +138,7 @@ function scheduleDailyMessage() {
 
     setTimeout(() => {
       sendDailyMessage();
-      setInterval(sendDailyMessage, 12 * 60 * 60 * 1000);
+      setInterval(sendDailyMessage, 24 * 60 * 60 * 1000);
     }, delay);
   } catch (err) {
     console.error('[HATA] Zamanlayıcı başlatılamadı:', err.message);
@@ -254,7 +254,7 @@ bot.telegram.getMe().then(async (me) => {
   console.log('✅ [BAŞLATILDI] Bot başarıyla hazır ve dinlemede!');
   console.log(`[KONTROL] Admin: ${ADMIN_ID || 'YOK'}, Kanal: ${ALLOWED_CHATS[0] || 'YOK'}`);
   
-  // Artık açılışta otomatik mesaj gönderilmiyor. Sadece 09:00 ve 21:00.
+  // Artık açılışta otomatik mesaj gönderilmiyor. Günde bir: TR 22:00.
   
   // Şimdi botu asıl dinleme moduna al
   return bot.launch({
